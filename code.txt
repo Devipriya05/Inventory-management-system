@@ -1,0 +1,161 @@
+#include <ESP8266WiFi.h>
+#include <EEPROM.h>
+String apiKey = "OWK5VCNMONJA1WVY"; // Enter your Write API key from
+ThingSpeak
+const char *ssid = "vivo 1907"; // replace with your wifi ssid and wpa2 key
+const char *pass = "05052004";
+const char* server = "api.thingspeak.com";
+WiFiClient client;
+#include <HX711.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <DHT11.h>
+DHT11 dht11(D5);
+12
+// HX711 circuit wiring
+const int LOADCELL_DOUT_PIN = D4;
+const int LOADCELL_SCK_PIN = D3;
+HX711 scale;
+int reading;
+int lastReading;
+int hum,temp,quant,weight;
+//REPLACE WITH YOUR CALIBRATION FACTOR
+#define CALIBRATION_FACTOR -476.592
+//OLED Display
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire,
+OLED_RESET);
+void setup() {
+Serial.begin(9600);
+Serial.println("Connecting to ");
+Serial.println(ssid);
+WiFi.begin(ssid, pass);
+while (WiFi.status() != WL_CONNECTED)
+{
+delay(500);
+Serial.print(".");
+}
+Serial.println("");
+13
+Serial.println("WiFi connected");
+if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+Serial.println(F("SSD1306 allocation failed"));
+for(;;);
+}
+delay(2000);
+display.clearDisplay();
+display.setTextColor(WHITE);
+Serial.println("Initializing the scale");
+scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+scale.set_scale(CALIBRATION_FACTOR); // this value is obtained by calibrating the scale
+with known weights
+scale.tare(); // reset the scale to 0
+}
+void loop() {
+if (scale.wait_ready_timeout(200)) {
+reading = round(scale.get_units());
+Serial.print("Weight: ");
+Serial.println(reading);
+}
+else {
+Serial.println("HX711 not found.");
+}
+int temperature = dht11.readTemperature();
+int humidity = dht11.readHumidity();
+if (temperature != DHT11::ERROR_CHECKSUM && temperature !=
+DHT11::ERROR_TIMEOUT &&
+humidity != DHT11::ERROR_CHECKSUM && humidity !=
+DHT11::ERROR_TIMEOUT)
+{
+14
+Serial.print("Temperature: ");
+Serial.print(temperature);
+Serial.println(" °C");
+Serial.print("Humidity: ");
+Serial.print(humidity);
+Serial.println(" %");
+}
+weight=reading;
+hum=humidity;
+temp=temperature;
+quant=map(reading,0,50,0,5);
+disp();
+if (client.connect(server, 80)) // "184.106.153.149" or api.thingspeak.com
+{
+String postStr = apiKey;
+postStr += "&field1=";
+postStr += String(weight);
+postStr += "&field2=";
+postStr += String(quant);
+postStr += "&field3=";
+postStr += String(hum);
+postStr += "&field4=";
+postStr += String(temp);
+postStr += "\r\n\r\n";
+client.print("POST /update HTTP/1.1\n");
+client.print("Host: api.thingspeak.com\n");
+client.print("Connection: close\n");
+client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
+client.print("Content-Type: application/x-www-form-urlencoded\n");
+client.print("Content-Length: ");
+client.print(postStr.length());
+client.print("\n\n");
+client.print(postStr);
+Serial.println(" Sending to Thingspeak.");
+15
+}
+client.stop();
+Serial.println("Waiting...");
+// thingspeak needs minimum 15 sec delay between updates
+delay(15);
+}
+void disp(){
+display.clearDisplay();
+display.setTextSize(1);
+display.setTextColor(WHITE);
+display.setCursor(0, 10);
+// Display static text
+display.println("Weight:");
+display.display();
+display.setCursor(50,10);
+display.setTextSize(1);
+display.print(weight);
+display.print(" ");
+display.print("g");
+display.display();
+display.setTextSize(1);
+display.setTextColor(WHITE);
+display.setCursor(0, 30);
+display.println("quantity:");
+display.display();
+display.setTextSize(1);
+display.setCursor(70, 30);
+display.println(quant);
+display.display();
+delay(1000);
+display.clearDisplay();
+display.setTextSize(1);
+16
+display.setTextColor(WHITE);
+display.setCursor(0, 10);
+display.println("Humidity:");
+display.display();
+display.setTextSize(1);
+display.setCursor(70, 10);
+display.println(hum);
+display.display();
+display.setTextSize(1);
+display.setTextColor(WHITE);
+display.setCursor(0, 30);
+display.println("temperature:");
+display.display();
+display.setTextSize(1);
+display.setCursor(90, 30);
+display.println(temp);
+display.display();
+delay(1000);
+}
